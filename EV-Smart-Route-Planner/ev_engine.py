@@ -73,8 +73,7 @@ OSRM_WORKERS = 4
 ELEV_WORKERS = 8
 OVERPASS_HEDGE_S = 6.0     # a mirror silent for this long -> ask the next mirror as well (first answer wins)
 OVERPASS_TOTAL_S = 32.0    # absolute cap for one Overpass question
-PLACES_GRACE_S = 26.0      # longest extra wait for town names once terrain + energy are ready (covers the backup lookup)
-PLACES_OVERPASS_S = 12.0   # give the Overpass servers this long for town names, then use the backup place-name service
+PLACES_GRACE_S = 6.0       # longest extra wait for town names once terrain + energy are ready
 MIN_ROUTES_WANTED = 3      # the 2 far via-point detours are only requested when fewer routes were found
 
 # --- Cache lifetimes (seconds) ---------------------------------------------------------------
@@ -1470,7 +1469,7 @@ def find_places_along_route(coords, distance_m, start_name="", dest_name="", sta
 
 
 NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
-REVERSE_MAX_CALLS = 8           # backup lookup: at most this many reverse-geocode requests per trip (1 per second)
+REVERSE_MAX_CALLS = 10          # backup lookup: at most this many reverse-geocode requests per trip (1 per second)
 _REVERSE_MEM = {}
 
 
@@ -1524,34 +1523,6 @@ def _places_by_reverse_geocoding(items, geoms, start_name, dest_name, stats):
     return results
 
 
-# Last resort when BOTH online place services fail: towns of the Mysuru-Bengaluru region (approximate centres).
-_BUILTIN_TOWNS = [
-    ("Srirangapatna", 12.4146, 76.6942), ("Mandya", 12.5218, 76.8951), ("Maddur", 12.5845, 77.0436),
-    ("Channapatna", 12.6515, 77.2067), ("Ramanagara", 12.7157, 77.2810), ("Bidadi", 12.7976, 77.3902),
-    ("Kengeri", 12.9177, 77.4833), ("Malavalli", 12.3868, 77.0642), ("Kanakapura", 12.5460, 77.4170),
-    ("Magadi", 12.9570, 77.2270), ("Nagamangala", 12.8190, 76.7570), ("Pandavapura", 12.4964, 76.6744),
-    ("Bannur", 12.3340, 76.8600), ("T. Narasipura", 12.2120, 76.9000), ("Hunsur", 12.3092, 76.2831),
-    ("K. R. Nagara", 12.4380, 76.3820), ("Tumakuru", 13.3379, 77.1173), ("Hassan", 13.0072, 76.1004),
-]
-
-
-def _places_from_builtin(items, geoms, start_name, dest_name):
-    out = []
-    for g in geoms:
-        found = []
-        for name, la, lo in _BUILTIN_TOWNS:
-            if _same_name(name, start_name) or _same_name(name, dest_name):
-                continue
-            off_m, along_m = _locate_on_route(g["line"], g["cum"], la, lo)
-            along_m *= g["scale"]
-            if off_m > PLACE_CORRIDOR_M or along_m < PLACE_ENDPOINT_EXCLUDE_M or along_m > g["total_m"] - PLACE_ENDPOINT_EXCLUDE_M:
-                continue
-            found.append({"name": name, "kind": "town", "lat": la, "lon": lo, "route_km": along_m / 1000.0,
-                          "offset_km": off_m / 1000.0, "population": 0})
-        out.append(sorted(found, key=lambda r: r["route_km"]))
-    return out
-
-
 def find_places_for_routes(items, start_name="", dest_name="", stats=None):
     """
     Same result as find_places_along_route() for every (coords, distance_m) in `items`, but with ONE Overpass
@@ -1560,19 +1531,14 @@ def find_places_for_routes(items, start_name="", dest_name="", stats=None):
     geoms = [_route_geom(c, d) for c, d in items]
     kinds = ("city", "town")
     try:
-        els = _overpass_elements(_places_query_union([c for c, _ in items], kinds), TTL_PLACES, stats,
-                                 total_s=PLACES_OVERPASS_S, hedge_s=3.0)
+        els = _overpass_elements(_places_query_union([c for c, _ in items], kinds), TTL_PLACES, stats)
     except ServiceError:
         backup = _places_by_reverse_geocoding(items, geoms, start_name, dest_name, stats or _NO_STATS)
-        source = "a backup place-name service"
         if not any(backup):
-            backup = _places_from_builtin(items, geoms, start_name, dest_name)
-            source = "the app's built-in list of towns for this region"
-        if not any(backup):
-            raise                                    # nothing found by any source: report the original outage
+            raise                                    # backup found nothing either: report the original outage
         if stats is not None:
-            stats.note(f"The online map-data servers did not answer, so the towns on the route come from {source}. "
-                       "The list may be shorter than usual; plan again later for the full list.")
+            stats.note("The main map-data servers (Overpass) did not answer, so the towns on the route come from a backup "
+                       "place-name service. The list may be shorter than usual; press Retry later for the full list.")
         return [_finalize_places(r) for r in backup]
     results = [_places_from_elements(els, g, kinds, start_name, dest_name) for g in geoms]
     empty = [i for i, r in enumerate(results) if not r]
