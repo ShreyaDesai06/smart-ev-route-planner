@@ -831,9 +831,11 @@ RESULTS_CSS = r'''<style>
 .ev-subhead small{font-weight:500;color:var(--ev-muted);font-size:.85rem}
 
 /* Route overview cards */
-.ev-rcard{margin:0!important;background:#fff;border:1px solid var(--ev-line);border-left:6px solid var(--rc,#10b981);border-radius:14px;padding:8px 18px;height:64px;overflow:hidden;
+.ev-rcard{margin:0!important;background:#fff;border:1px solid var(--ev-line);border-left:6px solid var(--rc,#10b981);border-radius:14px;padding:8px 18px;height:78px;overflow:hidden;
   box-shadow:0 1px 2px rgba(10,31,60,.05);display:grid;grid-template-columns:minmax(0,1fr) 350px;align-items:center;gap:6px 18px}
 .ev-rcard.sel{border-color:var(--ev-accent);box-shadow:0 0 0 2px rgba(16,185,129,.35),0 8px 20px rgba(16,185,129,.14)}
+.ev-rcard-main{min-width:0;display:flex;flex-direction:column;gap:5px}
+.ev-rcard-via{font-size:.82rem;color:var(--ev-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:20px}
 .ev-rcard-top{display:flex;flex-wrap:nowrap;align-items:center;margin:0;gap:10px;overflow:hidden}
 .ev-rcard-name{font-size:1.05rem;font-weight:800;color:var(--ev-navy);display:flex;align-items:center;gap:8px;white-space:nowrap}
 .ev-dot{width:12px;height:12px;border-radius:50%;display:inline-block;flex:0 0 12px}
@@ -936,9 +938,9 @@ RESULTS_CSS = r'''<style>
 .stApp [data-testid="stCheckbox"] label,.stApp [data-testid="stCheckbox"] label>div{background:transparent!important}
 .stApp [data-testid="stCheckbox"] label p{color:var(--ev-navy);font-weight:700;background:transparent}
 .stApp [data-testid="stHorizontalBlock"]:has(.ev-rcard) div.stButton{width:100%}
-.stApp [data-testid="stHorizontalBlock"]:has(.ev-rcard) div.stButton>button{height:64px;min-height:64px}
+.stApp [data-testid="stHorizontalBlock"]:has(.ev-rcard) div.stButton>button{height:78px;min-height:78px}
 @media (max-width:860px){.ev-rcard{grid-template-columns:1fr;height:auto;padding:12px 16px}.ev-rcard .ev-stats{grid-column:1/-1}
-  .stApp [data-testid="stHorizontalBlock"]:has(.ev-rcard) div.stButton>button{height:auto;min-height:46px}}
+  .stApp [data-testid="stHorizontalBlock"]:has(.ev-rcard) div.stButton>button{height:auto;min-height:46px}.ev-rcard-via{white-space:normal}}
 @media (max-width:640px){.ev-rcard{grid-template-columns:1fr}.ev-rcard .ev-stats{grid-template-columns:1fr 1fr}}
 @media (max-width:900px){.ev-kpis{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:640px){
@@ -1035,12 +1037,14 @@ def ev_route_card(i, a, selected, tags):
     if not pills:
         pills = '<span class="ev-pill plain">Alternative route</span>'
     via = eng.route_via_text(a.get("places"))
-    via_html = f"via {_h(via)}" if via else "No cities/towns listed"
+    via_html = f"via {_h(via)}" if via else "Direct road (no major towns listed)"
     arr_tone = "bad" if (not e["feasible"] or e["below_reserve"]) else ("warn" if e["low_soc"] else "")
     stat = lambda label, val, tone="": (f'<div><div class="ev-stat-l">{label}</div><div class="ev-stat-v {tone}">{val}</div></div>')
     return (f'<div class="ev-rcard{" sel" if selected else ""}" style="--rc:{color}">'
+            '<div class="ev-rcard-main">'
             f'<div class="ev-rcard-top"><span class="ev-rcard-name"><span class="ev-dot" style="background:{color}"></span>{_h(r["corridor_name"])}</span>'
             f'{"<span class=ev-selbadge>Selected</span>" if selected else ""}<div class="ev-rtags">{pills}</div></div>'
+            f'<div class="ev-rcard-via">{via_html}</div></div>'
             '<div class="ev-stats">'
             + stat("Distance", f'{r["distance_km"]:.1f} km')
             + stat("Time", _h(fmt_minutes(r["duration_minutes"])))
@@ -1380,19 +1384,6 @@ else:
     # ------------------------------------------------------------------ 2. Interactive Map
     st.markdown(ev_section("map", "Interactive Map", "All alternative routes. The selected route is drawn in green; A is the start, B the destination."),
                 unsafe_allow_html=True)
-    seq = eng.route_sequence(start["name"], dest["name"], places, route["distance_km"])
-    if curr.get("places_error"):
-        stops_note = ""
-    elif places is not None:
-        stops_note = (f"{len(places)} {'city/town' if len(places) == 1 else 'cities/towns'} within {eng.PLACE_CORRIDOR_M / 1000:.0f} km of the road, "
-                      "in driving order (km = distance along this route; source: OpenStreetMap).")
-    else:
-        stops_note = ""
-    st.markdown(
-        '<div class="ev-panel"><div class="ev-panel-head"><b>Selected: ' + _h(route["corridor_name"]) + '</b> · '
-        + f'{route["distance_km"]:.1f} km · {_h(fmt_minutes(route["duration_minutes"]))}</div>'
-        + ev_sequence(seq) + (ev_note(stops_note) if stops_note else "") + "</div>",
-        unsafe_allow_html=True)
     if curr.get("places_error"):
         st.markdown(ev_alert("warn", _h(curr["places_error"]) + " Only the start and destination are shown."), unsafe_allow_html=True)
         _rp, _ = st.columns([1, 2])
