@@ -25,7 +25,7 @@ streamlit run app_3.py
 Live GPS needs https or localhost.
 
 ## Files
-- `app_3.py`: the Streamlit interface (home page and results page)
+- `app.py`: the Streamlit interface (home page and results page)
 - `ev_engine.py`: routing, elevation, energy model and charger logic
 - `requirements.txt`: Python dependencies
 
