@@ -1,6 +1,7 @@
 import html
 import logging
 import math
+import re
 
 import pandas as pd
 import streamlit as st
@@ -972,6 +973,17 @@ def _icon_css():
 RESULTS_CSS = RESULTS_CSS.replace("/*__ICONS__*/", _icon_css())
 
 
+def _compact_css(css):
+    """
+    CSS for st.markdown(unsafe_allow_html=True): remove comments and ALL blank lines/indentation.
+    Markdown ends an HTML block at the first blank line, so on some Streamlit versions (e.g. the one used when deployed) every
+    rule after a blank line inside <style> was treated as plain text and silently lost - the route-stop chips then showed
+    unstyled ("AMysuru0 km..."). One compact block has no blank line, so it behaves the same on every version.
+    """
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    return "\n".join(line.strip() for line in css.splitlines() if line.strip())
+
+
 def _h(value):
     """HTML-escape any text shown on the results page ($ is escaped so Streamlit never treats it as maths)."""
     return html.escape(str(value)).replace("$", "&#36;")
@@ -1238,7 +1250,7 @@ HOME_CSS = r'''<style>
 # ==========================================
 
 if st.session_state.page == "home":
-    st.markdown(HOME_CSS, unsafe_allow_html=True)
+    st.markdown(_compact_css(HOME_CSS), unsafe_allow_html=True)
     st.markdown(
         '<div class="ev-hero"><div class="ev-hero-brand">EV Dashboard</div>'
         '<div class="ev-hero-title">⚡ Smart EV Route Planner</div>'
@@ -1324,7 +1336,7 @@ else:
     user_start_text = st.session_state.get("user_start_text", start["name"])
     user_dest_text = st.session_state.get("user_dest_text", dest["name"])
 
-    st.markdown(RESULTS_CSS, unsafe_allow_html=True)
+    st.markdown(_compact_css(RESULTS_CSS), unsafe_allow_html=True)
 
     # The selected route lives in session state under a fixed key; the "Select route" buttons below change it
     # (callback runs before this script is re-run, so every section below always shows the same route).
