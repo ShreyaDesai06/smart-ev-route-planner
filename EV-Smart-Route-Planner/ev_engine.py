@@ -73,7 +73,8 @@ OSRM_WORKERS = 4
 ELEV_WORKERS = 8
 OVERPASS_HEDGE_S = 6.0     # a mirror silent for this long -> ask the next mirror as well (first answer wins)
 OVERPASS_TOTAL_S = 32.0    # absolute cap for one Overpass question
-PLACES_GRACE_S = 6.0       # longest extra wait for town names once terrain + energy are ready
+PLACES_GRACE_S = 26.0      # longest extra wait for town names once terrain + energy are ready (covers the backup lookup)
+PLACES_OVERPASS_S = 12.0   # give the Overpass servers this long for town names, then use the backup place-name service
 MIN_ROUTES_WANTED = 3      # the 2 far via-point detours are only requested when fewer routes were found
 
 # --- Cache lifetimes (seconds) ---------------------------------------------------------------
@@ -1469,7 +1470,7 @@ def find_places_along_route(coords, distance_m, start_name="", dest_name="", sta
 
 
 NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
-REVERSE_MAX_CALLS = 10          # backup lookup: at most this many reverse-geocode requests per trip (1 per second)
+REVERSE_MAX_CALLS = 8           # backup lookup: at most this many reverse-geocode requests per trip (1 per second)
 _REVERSE_MEM = {}
 
 
@@ -1531,7 +1532,8 @@ def find_places_for_routes(items, start_name="", dest_name="", stats=None):
     geoms = [_route_geom(c, d) for c, d in items]
     kinds = ("city", "town")
     try:
-        els = _overpass_elements(_places_query_union([c for c, _ in items], kinds), TTL_PLACES, stats)
+        els = _overpass_elements(_places_query_union([c for c, _ in items], kinds), TTL_PLACES, stats,
+                                 total_s=PLACES_OVERPASS_S, hedge_s=3.0)
     except ServiceError:
         backup = _places_by_reverse_geocoding(items, geoms, start_name, dest_name, stats or _NO_STATS)
         if not any(backup):
