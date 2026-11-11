@@ -1468,6 +1468,61 @@ def find_places_along_route(coords, distance_m, start_name="", dest_name="", sta
     return _finalize_places(places)
 
 
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
+REVERSE_MAX_CALLS = 10          # backup lookup: at most this many reverse-geocode requests per trip (1 per second)
+_REVERSE_MEM = {}
+
+
+def _reverse_place_name(lat, lon, stats):
+    """Name of the city/town/village at a point from Nominatim (backup source). '' when unknown. Never raises."""
+    key = (round(lat, 2), round(lon, 2))
+    if key in _REVERSE_MEM:
+        return _REVERSE_MEM[key]
+    name = ""
+    try:
+        _nominatim_gate()
+        stats.req("nominatim")
+        resp = _http_get(NOMINATIM_REVERSE_URL, params={"format": "jsonv2", "lat": f"{lat:.5f}", "lon": f"{lon:.5f}", "zoom": 10,
+                                                        "addressdetails": 1, "accept-language": "en"},
+                         headers={"User-Agent": USER_AGENT}, timeout=(4, 6))
+        resp.raise_for_status()
+        addr = (resp.json() or {}).get("address") or {}
+        name = str(addr.get("city") or addr.get("town") or addr.get("village") or addr.get("municipality") or "").strip()
+    except Exception:
+        return ""                                  # failures are not remembered, so a later retry can succeed
+    _REVERSE_MEM[key] = name
+    return name
+
+
+def _places_by_reverse_geocoding(items, geoms, start_name, dest_name, stats):
+    """
+    BACKUP when every Overpass server is down: ask Nominatim which town lies at a few points along each route.
+    Fewer places than the Overpass lookup (only towns that happen to sit at the sampled points), but it uses a
+    different server. Returns one list per route (possibly empty).
+    """
+    results = [[] for _ in items]
+    calls = 0
+    for ri, ((coords, dist_m), g) in enumerate(zip(items, geoms)):
+        pts = sample_route_points(coords, None, max_points=8, min_spacing_m=5000.0)
+        found = {}
+        for p in pts[1:-1]:                          # skip the very first / last point (start and destination)
+            if (round(p["lat"], 2), round(p["lon"], 2)) not in _REVERSE_MEM:
+                if calls >= REVERSE_MAX_CALLS:
+                    continue
+                calls += 1
+            name = _reverse_place_name(p["lat"], p["lon"], stats)
+            if not name or _same_name(name, start_name) or _same_name(name, dest_name):
+                continue
+            off_m, along_m = _locate_on_route(g["line"], g["cum"], p["lat"], p["lon"])
+            along_m *= g["scale"]
+            if along_m < PLACE_ENDPOINT_EXCLUDE_M or along_m > g["total_m"] - PLACE_ENDPOINT_EXCLUDE_M:
+                continue
+            found.setdefault(name.casefold(), {"name": name, "kind": "town", "lat": float(p["lat"]), "lon": float(p["lon"]),
+                                               "route_km": along_m / 1000.0, "offset_km": off_m / 1000.0, "population": 0})
+        results[ri] = sorted(found.values(), key=lambda r: r["route_km"])
+    return results
+
+
 def find_places_for_routes(items, start_name="", dest_name="", stats=None):
     """
     Same result as find_places_along_route() for every (coords, distance_m) in `items`, but with ONE Overpass
@@ -1475,7 +1530,16 @@ def find_places_for_routes(items, start_name="", dest_name="", stats=None):
     """
     geoms = [_route_geom(c, d) for c, d in items]
     kinds = ("city", "town")
-    els = _overpass_elements(_places_query_union([c for c, _ in items], kinds), TTL_PLACES, stats)
+    try:
+        els = _overpass_elements(_places_query_union([c for c, _ in items], kinds), TTL_PLACES, stats)
+    except ServiceError:
+        backup = _places_by_reverse_geocoding(items, geoms, start_name, dest_name, stats or _NO_STATS)
+        if not any(backup):
+            raise                                    # backup found nothing either: report the original outage
+        if stats is not None:
+            stats.note("The main map-data servers (Overpass) did not answer, so the towns on the route come from a backup "
+                       "place-name service. The list may be shorter than usual; press Retry later for the full list.")
+        return [_finalize_places(r) for r in backup]
     results = [_places_from_elements(els, g, kinds, start_name, dest_name) for g in geoms]
     empty = [i for i, r in enumerate(results) if not r]
     if empty:
