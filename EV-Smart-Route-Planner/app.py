@@ -166,7 +166,15 @@ FRAME_FIT_JS = r"""
       var h = Math.min(2400, Math.max(120, Math.ceil(document.body.getBoundingClientRect().height) + 4));
       if (h !== last) {
         last = h;
-        if (fe) { fe.style.height = h + "px"; fe.setAttribute("height", String(h)); }
+        if (fe) {
+          fe.style.height = h + "px"; fe.setAttribute("height", String(h));
+          // Streamlit wraps the frame in containers that can keep the OLD height; then a taller frame would overlap the
+          // next element (e.g. the checkbox below the map). Grow the nearest wrappers together with the frame.
+          var el = fe.parentElement;
+          for (var k = 0; k < 3 && el && el.tagName !== "BODY"; k++, el = el.parentElement) {
+            el.style.height = h + "px"; el.style.minHeight = h + "px";
+          }
+        }
         // Also ask the host page (Streamlit) to size the frame, for hosts that do not allow direct access to it.
         try { window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setFrameHeight", height: h}, "*"); } catch (e) {}
       }
@@ -749,13 +757,13 @@ def build_map_payload(analyzed, selected_idx, start, dest, stations, vehicle_cat
         "model": eng.model_params(ev_model, vehicle_category),
         "selIdx": selected_idx,
         "places": [{"lat": p["lat"], "lon": p["lon"], "name": p["name"], "km": p["route_km"]} for p in (sel.get("places") or [])],
-        "placesNote": ("City/town names could not be loaded (map-data service unavailable); only start and destination are labelled."
-                       if sel.get("places_error") else
+        "placesNote": ("" if sel.get("places_error") else
                        ("No cities/towns found within 6 km of this route." if sel.get("places") == [] else "")),
     }
 
 
-MAP_FRAME_HEIGHT = 965   # first-paint height only: the frame resizes itself to its content (see FRAME_FIT_JS)
+MAP_FRAME_HEIGHT = 770   # measured content height is ~745 px (idle). The frame also resizes itself to its content (see FRAME_FIT_JS);
+                         # where a host blocks that, 770 leaves no big empty gap and the panel scrolls inside the frame while navigating
 
 
 def build_map_html(data):
@@ -1385,13 +1393,16 @@ else:
     st.markdown(ev_section("map", "Interactive Map", "All alternative routes. The selected route is drawn in green; A is the start, B the destination."),
                 unsafe_allow_html=True)
     if curr.get("places_error"):
-        st.markdown(ev_alert("warn", _h(curr["places_error"]) + " Only the start and destination are shown."), unsafe_allow_html=True)
-        _rp, _ = st.columns([1, 2])
-        with _rp:
-            if st.button("Retry city/town lookup", key="retry_places"):
-                with st.spinner("Looking up cities and towns along this route..."):
-                    eng.attach_places([curr], start["name"], dest["name"])
+        # No warning and no button: try the town-name lookup once more in the background (it normally finishes from the
+        # saved cache) and move on. Without names the route cards simply show no "via ..." text.
+        _tried = st.session_state.setdefault("places_retried", set())
+        if (id(curr), selected_idx) not in _tried:
+            _tried.add((id(curr), selected_idx))
+            try:
+                eng.attach_places([curr], start["name"], dest["name"])
                 st.rerun()
+            except EVPlannerError:
+                pass
 
     charging = {}
     for _k, _v in st.session_state.get("charging", {}).items():
