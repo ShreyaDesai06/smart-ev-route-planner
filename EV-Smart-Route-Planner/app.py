@@ -1442,7 +1442,7 @@ else:
             st.markdown(ev_note(terrain_note), unsafe_allow_html=True)
 
     # ------------------------------------------------------------------ 5. Charging Stations
-    st.markdown(ev_section("charging", "Charging Stations", "Chargers from OpenStreetMap near the destination and near the point where the battery drops below 20%."),
+    st.markdown(ev_section("charging", "Charging Stations", "Chargers near your destination and low-battery point."),
                 unsafe_allow_html=True)
 
     def search_chargers():
@@ -1507,7 +1507,7 @@ else:
                     unsafe_allow_html=True)
 
     # ------------------------------------------------------------------ 6. Navigation
-    st.markdown(ev_section("back", "Navigation", "Go back to the first page to plan another trip."), unsafe_allow_html=True)
+    st.markdown(ev_section("back", "Navigation", "Start a new journey."), unsafe_allow_html=True)
     _nv, _ = st.columns([1, 2])
     with _nv:
         if st.button("← NEW TRIP", key="new_trip", type="primary"):
