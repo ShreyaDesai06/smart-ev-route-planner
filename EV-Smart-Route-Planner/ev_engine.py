@@ -153,7 +153,7 @@ class RoutingError(EVPlannerError):
 EV_DATABASE = {
     "Tata Curvv EV 45": {"battery_capacity_kwh": 45.0, "curb_mass_kg": 1500, "cd": 0.28, "frontal_area_m2": 2.30, "rolling_coeff": 0.012, "motor_efficiency": 0.88, "regen_efficiency": 0.70},
     "Tata Nexon EV": {"battery_capacity_kwh": 40.5, "curb_mass_kg": 1400, "cd": 0.30, "frontal_area_m2": 2.35, "rolling_coeff": 0.012, "motor_efficiency": 0.87, "regen_efficiency": 0.70},
-    "MG Windsor EV": {"battery_capacity_kwh": 38.0, "curb_mass_kg": 1480, "cd": 0.29, "frontal_area_m2": 2.32, "rolling_coeff": 0.012, "motor_efficiency": 0.88, "regen_efficiency": 0.70},
+    "MG Windsor EV": {"battery_capacity_kwh": 38.0, "curb_mass_kg": 1566, "cd": 0.29, "frontal_area_m2": 2.32, "rolling_coeff": 0.012, "motor_efficiency": 0.88, "regen_efficiency": 0.70},
     "Tata Tiago EV": {"battery_capacity_kwh": 24.0, "curb_mass_kg": 1150, "cd": 0.33, "frontal_area_m2": 2.15, "rolling_coeff": 0.012, "motor_efficiency": 0.85, "regen_efficiency": 0.65},
 }
 
@@ -161,6 +161,7 @@ TWO_WHEELER_DATABASE = {
     "Ather 450X": {"battery_capacity_kwh": 3.7, "curb_mass_kg": 111, "cd": 0.9, "frontal_area_m2": 0.6, "rolling_coeff": 0.015, "motor_efficiency": 0.85, "regen_efficiency": 0.50},
     "TVS iQube": {"battery_capacity_kwh": 3.5, "curb_mass_kg": 118, "cd": 0.9, "frontal_area_m2": 0.6, "rolling_coeff": 0.015, "motor_efficiency": 0.85, "regen_efficiency": 0.50},
     "Bajaj Chetak": {"battery_capacity_kwh": 3.5, "curb_mass_kg": 134, "cd": 0.9, "frontal_area_m2": 0.6, "rolling_coeff": 0.015, "motor_efficiency": 0.85, "regen_efficiency": 0.50},
+    "Ola S1 Pro (Gen 2, 4 kWh)": {"battery_capacity_kwh": 4.0, "curb_mass_kg": 125, "cd": 0.9, "frontal_area_m2": 0.6, "rolling_coeff": 0.015, "motor_efficiency": 0.85, "regen_efficiency": 0.50},
 }
 
 THREE_WHEELER_DATABASE = {
@@ -173,6 +174,20 @@ VEHICLE_DATABASES = {
     "Electric Car (4-Wheeler)": EV_DATABASE,
     "Electric Two-Wheeler": TWO_WHEELER_DATABASE,
     "Electric Three-Wheeler": THREE_WHEELER_DATABASE,
+}
+
+
+# Where each curb mass comes from. "document" = found in a manufacturer document for the stated variant; "approx" = a
+# document value differs slightly from the number used; "assumed" = no published kerb weight was found (state this in the report).
+MASS_STATUS = {
+    "Tata Curvv EV 45": "assumed", "Tata Nexon EV": "assumed", "Tata Tiago EV": "assumed",
+    "MG Windsor EV": "document: MG owner-manual extract, 38 kWh variant, 1566 kg",
+    "Ather 450X": "approx: sheet 111.6 kg", "TVS iQube": "approx: sheet 119.1 kg",
+    "Bajaj Chetak": "document: about 134 kg",
+    "Ola S1 Pro (Gen 2, 4 kWh)": "assumed: a secondary listing gives 4 kWh and both 116 and 125 kg; confirm from the RC book or Ola brochure",
+    "Mahindra Treo": "assumed",
+    "Piaggio Ape E-City (Swappable)": "document: 389 kg for the older E-City brochure; swappable variant not stated",
+    "Bajaj RE E-TEC 9.0": "assumed: no kerb weight published (guidebook lists NA)",
 }
 
 
@@ -1119,6 +1134,23 @@ def _places_results(items, start_name, dest_name, stats):
         return [(None, f"City/town lookup failed ({type(exc).__name__}).")] * len(items)
 
 
+def vehicle_route(route, energy):
+    """
+    Copy of a route whose travel time matches the energy calculation for THIS vehicle.
+
+    OSRM's duration is a car time. The energy model drives the route at energy["avg_speed_kmh"] = the route's mean speed
+    limited to [MIN_CRUISE_KMH, category maximum] (e.g. 45 km/h for a three-wheeler). The time shown to the user (and the
+    auxiliary-energy time inside the model) must use that same speed, otherwise a three-wheeler would be shown a car's ETA.
+    The original OSRM figure is kept in osrm_duration_minutes; the input route dict (which may be cached) is not modified.
+    """
+    r = dict(route)
+    speed = energy["avg_speed_kmh"]
+    r["vehicle_speed_kmh"] = speed
+    r["speed_limited"] = abs(speed - route["cruise_speed_kmh"]) > 0.05
+    r["duration_minutes"] = round(route["distance_km"] / speed * 60.0 * TRAVEL_TIME_FACTOR)
+    return r
+
+
 def analyze_routes(routes, ev_model, initial_soc, vehicle_category, progress=None, places_for=None,
                    stats=None, timings=None):
     """
@@ -1158,7 +1190,7 @@ def analyze_routes(routes, ev_model, initial_soc, vehicle_category, progress=Non
     for idx, (r, pts, raw) in enumerate(zip(routes, pts_list, raw_lists)):
         prof = _profile_from_samples(pts, raw)
         energy = calculate_energy(prof["points"], ev_model, initial_soc, vehicle_category, avg_speed_kmh=r.get("cruise_speed_kmh"))
-        analyzed.append({"route_id": idx, "route": r, "profile": prof, "energy": energy})
+        analyzed.append({"route_id": idx, "route": vehicle_route(r, energy), "profile": prof, "energy": energy})
     timings["Energy model"] = time.perf_counter() - t
 
     if places_future is not None:
@@ -1591,8 +1623,9 @@ def route_consistency_problems(a, tol_km=0.6):
         problems.append("elevation profile length differs from the route distance")
     if abs(en["trace"][-1]["distance_km"] - d) > tol_km:
         problems.append("energy trace length differs from the route distance")
-    if abs(r["duration_minutes"] - r["osrm_duration_minutes"] * TRAVEL_TIME_FACTOR) > 0.6:
-        problems.append("displayed time differs from the routing duration")
+    speed = en.get("avg_speed_kmh")
+    if speed and abs(r["duration_minutes"] - d / speed * 60.0 * TRAVEL_TIME_FACTOR) > 0.6:
+        problems.append("displayed time differs from the time used by the energy model")
     return problems
 
 
