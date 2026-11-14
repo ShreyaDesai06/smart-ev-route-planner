@@ -162,6 +162,7 @@ TWO_WHEELER_DATABASE = {
     "Ather 450X": {"battery_capacity_kwh": 3.7, "curb_mass_kg": 111, "cd": 0.9, "frontal_area_m2": 0.6, "rolling_coeff": 0.015, "motor_efficiency": 0.85, "regen_efficiency": 0.50},
     "TVS iQube": {"battery_capacity_kwh": 3.5, "curb_mass_kg": 118, "cd": 0.9, "frontal_area_m2": 0.6, "rolling_coeff": 0.015, "motor_efficiency": 0.85, "regen_efficiency": 0.50},
     "Bajaj Chetak": {"battery_capacity_kwh": 3.5, "curb_mass_kg": 134, "cd": 0.9, "frontal_area_m2": 0.6, "rolling_coeff": 0.015, "motor_efficiency": 0.85, "regen_efficiency": 0.50},
+    "Ola S1 Pro (Gen 1, 3.97 kWh)": {"battery_capacity_kwh": 3.97, "curb_mass_kg": 125, "cd": 0.9, "frontal_area_m2": 0.6, "rolling_coeff": 0.015, "motor_efficiency": 0.85, "regen_efficiency": 0.50},
     "Ola S1 Pro (Gen 2, 4 kWh)": {"battery_capacity_kwh": 4.0, "curb_mass_kg": 125, "cd": 0.9, "frontal_area_m2": 0.6, "rolling_coeff": 0.015, "motor_efficiency": 0.85, "regen_efficiency": 0.50},
 }
 
@@ -185,6 +186,7 @@ MASS_STATUS = {
     "MG Windsor EV": "document: MG owner-manual extract, 38 kWh variant, 1566 kg",
     "Ather 450X": "approx: sheet 111.6 kg", "TVS iQube": "approx: sheet 119.1 kg",
     "Bajaj Chetak": "document: about 134 kg",
+    "Ola S1 Pro (Gen 1, 3.97 kWh)": "assumed: capacity is the commonly quoted 3.97 kWh and mass is a typical listed value, neither taken from an Ola document; confirm from the Ola app / RC book / brochure",
     "Ola S1 Pro (Gen 2, 4 kWh)": "assumed: a secondary listing gives 4 kWh and both 116 and 125 kg; confirm from the RC book or Ola brochure",
     "Mahindra Treo": "assumed",
     "Piaggio Ape E-City (Swappable)": "document: 389 kg for the older E-City brochure; swappable variant not stated",
