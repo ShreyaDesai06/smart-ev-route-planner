@@ -66,6 +66,7 @@ USER_AGENT = "EV-Route-Planner/1.0 (final-year-project)"
 
 # --- Network behaviour: (connect, read) timeouts in seconds ---------------------------------
 NOMINATIM_TIMEOUT = (5, 8)
+PHOTON_URL = "https://photon.komoot.io/api/"      # backup place search (OpenStreetMap data), used only if Nominatim fails
 OSRM_TIMEOUT = (5, 12)
 ELEVATION_TIMEOUT = (4, 8)
 OVERPASS_CONNECT_S = 4.0   # TCP/TLS connect limit; the read limit is the remaining time budget of the question
@@ -460,10 +461,41 @@ def _nominatim_query(location, india_only, stats=_NO_STATS):
     raise ServiceError(f"Location service (Nominatim) is not responding ({type(last).__name__}). Please try again in a moment.")
 
 
+def _photon_query(location, stats=_NO_STATS):
+    """Backup geocoder (Photon). Returns results in the same shape as Nominatim's (lat, lon, display_name), India only."""
+    params = {"q": location, "limit": 5, "lang": "en", "lat": 12.9, "lon": 77.0, "bbox": "68,6,98,36"}
+    stats.req("photon")
+    resp = _http_get(PHOTON_URL, params=params, headers={"User-Agent": USER_AGENT}, timeout=NOMINATIM_TIMEOUT)
+    resp.raise_for_status()
+    out = []
+    for f in (resp.json() or {}).get("features", []):
+        pr, co = f.get("properties") or {}, (f.get("geometry") or {}).get("coordinates") or []
+        if len(co) < 2 or str(pr.get("countrycode", "IN")).upper() != "IN":
+            continue
+        parts = [pr.get(k) for k in ("name", "street", "district", "city", "state", "country")]
+        names = []
+        for p in parts:
+            if p and p not in names:
+                names.append(p)
+        out.append({"lat": co[1], "lon": co[0], "display_name": ", ".join(names) or location})
+    return out
+
+
 def _geocode_uncached(clean_loc, stats):
-    data = _nominatim_query(clean_loc, True, stats)
-    if not data:
-        data = _nominatim_query(clean_loc, False, stats)
+    primary_error = None
+    try:
+        data = _nominatim_query(clean_loc, True, stats) or _nominatim_query(clean_loc, False, stats)
+    except ServiceError as exc:            # Nominatim refused / timed out (common from shared hosting): try the backup
+        primary_error, data = exc, None
+        try:
+            data = _photon_query(clean_loc, stats)
+        except (requests.RequestException, ValueError):
+            raise primary_error
+    if not data and primary_error is None:
+        try:                               # Nominatim answered but found nothing: the backup may know the place
+            data = _photon_query(clean_loc, stats)
+        except (requests.RequestException, ValueError):
+            data = None
     if not data:
         raise LocationNotFoundError(f"Location '{clean_loc}' was not found. Check the spelling or add the city/state (e.g. 'Hunsur, Karnataka').")
     top = data[0]
