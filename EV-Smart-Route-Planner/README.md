@@ -2,7 +2,7 @@
 
 An elevation-aware route planner for electric vehicles in India (2-, 3- and 4-wheelers), built with Streamlit. It estimates battery energy, arrival state of charge (SOC) and travel time for each alternative route using a physics-based model, shows the terrain, finds nearby chargers and offers live GPS navigation with rerouting. Focus area: Mysuru to Bengaluru.
 
-**Live app:** _add your Streamlit Community Cloud link here_
+**Live app:** [_add your Streamlit Community Cloud link here_](https://smart-ev-route-planner-4bifsnxxfw2u8dyppjgz7h.streamlit.app/)
 
 Final-year project, Department of Electrical and Electronics Engineering, Vidyavardhaka College of Engineering, Mysuru (Team No. 12).
 
